@@ -14,12 +14,17 @@ todo:
     add an option to just load all .txt files in current folder w/o openFileDialog
     actually get headers from files and use them to name pd columns
     
+    paint data points on graphs according to their shot numders (and add colorbar)
+    
 """
-# import numpy as np
+import numpy as np
 import pandas as pd
-# import math
+import math
 import matplotlib.pyplot as plt
 import os
+# from sklearn.linear_model import LinearRegression #scikit-learn
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 import tkinter as tk
 from tkinter import filedialog as fd
 from tkinter.messagebox import showinfo
@@ -33,6 +38,7 @@ def parse_line(line):
 # FILE_NAME = 's6_r2_FBA_pick.txt'
 root = tk.Tk()
 root.withdraw()
+
 
 filetypes = ( ('text files', '*.txt'), ('All files', '*.*') )
 file_paths = fd.askopenfilenames( 
@@ -85,32 +91,80 @@ for pickname in picks_di:
     df['Rec_Elev'] = pd.to_numeric(new2[0])
     df['time'] = pd.to_numeric(new2[1])
     df = df.drop("SOU_ELEV:REC_ELEV", axis=1)
+# %% linear regression #pip install scikit-learn
+    df['st.ray_len'] = (distance**2 + (df['Rec_Elev']-df['Depth'])**2)**(0.5)
+    X = df['st.ray_len'].values()
+    y = df['time'].values()
     
-    df['st.ray_len'] =  (distance**2 + (df['Rec_Elev']-df['Depth'])**2)**(0.5)
+    SEED = 42
     
-    # df['angle'] = abs(df['Rec_Elev']- df['Depth'])
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, 
+                                                        random_state = SEED)
     
+    regressor = LinearRegression()
+    regressor.fit(X_train, y_train)
+    b, k = regressor.intercept_, regressor.coef_
+    
+    
+    # regressor.fit(X_train, y_train)
+    
+    # P1_x, P1_y = df['Depth'], 0
+    # P2_x, P2_y = df['Rec_Elev'], distance
+    # deltaY = P2_y - P1_y
+    # deltaX = P2_x - P1_x
+    # (deltaX, deltaY) is a vector of ray
+    # unit_vec = np.linalg.norm([deltaX,deltaY])
+    # unit_vec = np.linalg.norm([df['Rec_Elev'] - df['Depth'], distance])
+# %%
+    df['angle'] = np.arctan2(distance,
+                             df['Rec_Elev'] - df['Depth']
+                             ) * 180 / math.pi
+    
+    df['average velocity'] = df['st.ray_len']/df['time']
     df['reduced_time'] = df['time'] - (df['st.ray_len']/Vel)
     
     df['calc.ray_len'] = df['time'] * Vel
+
+    
     
     df['time, s'] = df['time']/1000 #converting time from [ms] to [s]
+    
+    
 # %%
-    options = [df['Rec_Elev'], df['Depth'], df['st.ray_len'] ]
-    fig, axs = plt.subplots(nrows=3, ncols=1, 
-                            figsize=(5, 8), constrained_layout = True)
-    for pl_Num, ax in enumerate(axs):
-        ax.plot(
-        options[pl_Num], df['time'],
+    # options = [df['Rec_Elev'], df['Depth'], df['st.ray_len'] ]
+    x_axs = ['st.ray_len', 'angle', 'Depth', 'Rec_Elev']
+    y_axs = ['time', 'reduced_time', 'calc.ray_len', 'average velocity']
+    fig, axs = plt.subplots(nrows=4, ncols=4, 
+                            figsize=(8, 8), constrained_layout = True)
+    # indexes = (
+    #     (0,0), (0,1), (1,0)
+    #     )
+    indexes = [(i,j) for i in range(2) for j in range(4)]
+    indexes.append((2,0))
+    indexes.append((3,0))
+    for ind in indexes:
+        i,j = ind
+        axs[i,j].plot(
+        df[x_axs[i]], df[y_axs[j]], #options[pl_Num], df['time'],
         color='blue', linestyle='', marker='.', mew=0.5, 
     )
-        ax.set_xlabel('depth, m')
-        ax.set_ylabel('traveltime, ms')
+        axs[i,j].set_xlabel(x_axs[i])
+        axs[i,j].set_ylabel(y_axs[j])
+        if (i,j) == (0,0):
+            x_min = min(df[x_axs[i]])
+            x_max = max(df[x_axs[i]])
+            axs[i,j].plot(
+                [x_min, x_max], 
+                [x_min*k + b, x_max*k + b],
+                color='red'
+                )
+            
         
-        fig.suptitle(pickname, fontsize=20, color="green")
+    fig.suptitle(pickname, fontsize=20, color="green")
         
-        plt.savefig(pickname + '.png')
+    plt.savefig(pickname + '.png')
 # %%
+print('DONE')
 showinfo(title='I gladly obey.', message='It is done.')
 # %% Drawing control plots
 # checklist (Lehman):
